@@ -1,0 +1,62 @@
+@inject HttpClient Http
+@page "/"
+
+<PageTitle>Animal List</PageTitle>
+
+<h1>Animal List hhhhhh</h1>
+
+@if (allAnimals == null)
+{
+    <div class="spinner-border text-primary"></div>
+}
+else
+{
+    <h3>Count: @allAnimals.Count</h3>
+    <ul>
+        @foreach (var animal in allAnimals)
+        {
+            <li>
+                <strong>@animal.Word</strong> - @animal.Hint (@animal.NumLetters letters, @animal.NumSyllables syllables)
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    public class AnimalWord
+    {
+        public string? Id { get; set; }
+        public string? Word { get; set; }
+        public string? Category { get; set; }
+        public int NumLetters { get; set; }
+        public int NumSyllables { get; set; }
+        public string? Hint { get; set; }
+    }
+
+    public class ApiResponse
+    {
+        public List<AnimalWord> Words { get; set; }
+    }
+
+    private List<AnimalWord>? allAnimals = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAnimals();
+    }
+
+    private async Task LoadAnimals()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<ApiResponse>(
+            "https://www.wordgamedb.com/api/v2/words?category=animal&limit=35");
+            allAnimals = response?.Words ?? new List<AnimalWord>();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            allAnimals = new List<AnimalWord>(); // create empty list
+        }
+    }
+}
