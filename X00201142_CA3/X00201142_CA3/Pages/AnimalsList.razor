@@ -3,7 +3,7 @@
 
 <PageTitle>Animal List</PageTitle>
 
-<h1>Animal List hhhhhh</h1>
+<h1>Animal List </h1>
 
 @if (allAnimals == null)
 {
@@ -11,15 +11,75 @@
 }
 else
 {
-    <h3>Count: @allAnimals.Count</h3>
-    <ul>
-        @foreach (var animal in allAnimals)
-        {
-            <li>
-                <strong>@animal.Word</strong> - @animal.Hint (@animal.NumLetters letters, @animal.NumSyllables syllables)
-            </li>
-        }
-    </ul>
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+        <input class="form-control" style="max-width:320px" placeholder="Search word, hint, category..."
+               @bind="SearchTerm" @bind:event="oninput" />
+
+        <label class="mb-0">Page size:</label>
+        <select class="form-select" style="width:100px" @bind="PageSize">
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+        </select>
+
+        <div class="ms-auto">
+            <strong>Total: </strong>@FilteredCount
+        </div>
+    </div>
+
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th @onclick="() => ToggleSort(nameof(AnimalWord.Word))" style="cursor:pointer">
+                    Word @SortArrow(nameof(AnimalWord.Word))
+                </th>
+                <th @onclick="() => ToggleSort(nameof(AnimalWord.Category))" style="cursor:pointer">
+                    Category @SortArrow(nameof(AnimalWord.Category))
+                </th>
+                <th @onclick="() => ToggleSort(nameof(AnimalWord.Hint))" style="cursor:pointer">
+                    Hint @SortArrow(nameof(AnimalWord.Hint))
+                </th>
+                <th @onclick="() => ToggleSort(nameof(AnimalWord.NumLetters))" style="cursor:pointer; width:120px">
+                    Letters @SortArrow(nameof(AnimalWord.NumLetters))
+                </th>
+                <th @onclick="() => ToggleSort(nameof(AnimalWord.NumSyllables))" style="cursor:pointer; width:120px">
+                    Syllables @SortArrow(nameof(AnimalWord.NumSyllables))
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!PagedItems.Any())
+            {
+                <tr><td colspan="5">No results</td></tr>
+            }
+            else
+            {
+                @foreach (var a in PagedItems)
+                {
+                    <tr>
+                        <td><strong>@a.Word</strong></td>
+                        <td>@a.Category</td>
+                        <td>@a.Hint</td>
+                        <td>@a.NumLetters</td>
+                        <td>@a.NumSyllables</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-outline-primary" @onclick="PrevPage" disabled="@(pageIndex == 0)">Prev</button>
+        <div>Page @(pageIndex + 1) of @PageCount</div>
+        <button class="btn btn-outline-primary" @onclick="NextPage" disabled="@(pageIndex >= PageCount - 1)">Next</button>
+
+        <div class="ms-auto">
+            Go to page:
+            <input type="number" style="width:70px" class="form-control d-inline-block"
+                   min="1" max="@PageCount" @bind="PageNumber" />
+        </div>
+    </div>
 }
 
 @code {
@@ -35,10 +95,53 @@ else
 
     public class ApiResponse
     {
-        public List<AnimalWord> Words { get; set; }
+        public List<AnimalWord> Words { get; set; } = new();
     }
 
     private List<AnimalWord>? allAnimals = null;
+
+    private string searchTerm = "";
+    private string sortColumn = nameof(AnimalWord.Word);
+    private bool sortDescending = false;
+    private int pageSize = 10;
+    private int pageIndex = 0;
+
+    private string SearchTerm
+    {
+        get => searchTerm;
+        set
+        {
+            if (searchTerm != value)
+            {
+                searchTerm = value;
+                pageIndex = 0;
+            }
+        }
+    }
+
+    private int PageSize
+    {
+        get => pageSize;
+        set
+        {
+            var v = Math.Max(1, value);
+            if (pageSize != v)
+            {
+                pageSize = v;
+                pageIndex = 0;
+            }
+        }
+    }
+
+    private int PageNumber
+    {
+        get => pageIndex + 1;
+        set
+        {
+            var maxIndex = Math.Max(0, PageCount - 1);
+            pageIndex = Math.Clamp(value - 1, 0, maxIndex);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -52,11 +155,90 @@ else
             var response = await Http.GetFromJsonAsync<ApiResponse>(
             "https://www.wordgamedb.com/api/v2/words?category=animal&limit=35");
             allAnimals = response?.Words ?? new List<AnimalWord>();
+            pageIndex = 0;
         }
         catch (Exception e)
         {
             Console.WriteLine(e);
-            allAnimals = new List<AnimalWord>(); // create empty list
+            allAnimals = new List<AnimalWord>();
         }
+    }
+
+    private List<AnimalWord> GetFilteredList()
+    {
+        if (allAnimals == null) return new List<AnimalWord>();
+
+        var query = allAnimals.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(SearchTerm))
+        {
+            var search = SearchTerm.Trim();
+            query = query.Where(all =>
+                all.Word?.Contains(search, StringComparison.OrdinalIgnoreCase) == true
+                || all.Hint?.Contains(search, StringComparison.OrdinalIgnoreCase) == true
+                || all.Category?.Contains(search, StringComparison.OrdinalIgnoreCase) == true
+            );
+        }
+        query = sortColumn switch
+        {
+            nameof(AnimalWord.NumLetters) => sortDescending ? query.OrderByDescending(a => a.NumLetters) : query.OrderBy(a => a.NumLetters),
+            nameof(AnimalWord.NumSyllables) => sortDescending ? query.OrderByDescending(a => a.NumSyllables) : query.OrderBy(a => a.NumSyllables),
+            nameof(AnimalWord.Category) => sortDescending ? query.OrderByDescending(a => a.Category ?? string.Empty) : query.OrderBy(a => a.Category ?? string.Empty),
+            nameof(AnimalWord.Hint) => sortDescending ? query.OrderByDescending(a => a.Hint ?? string.Empty) : query.OrderBy(a => a.Hint ?? string.Empty),
+            _ => sortDescending ? query.OrderByDescending(a => a.Word ?? string.Empty) : query.OrderBy(a => a.Word ?? string.Empty),
+        };
+
+        return query.ToList();
+    }
+
+    private int FilteredCount => GetFilteredList().Count;
+
+    private int PageCount
+    {
+        get
+        {
+            var size = Math.Max(1, PageSize);
+            var count = FilteredCount;
+            var pages = (count + size - 1) / size;
+            return Math.Max(1, pages);
+        }
+    }
+    private IEnumerable<AnimalWord> PagedItems
+    {
+        get
+        {
+            var list = GetFilteredList();
+            var maxIndex = Math.Max(0, PageCount - 1);
+            var idx = Math.Clamp(pageIndex, 0, maxIndex);
+            return list.Skip(idx * PageSize).Take(PageSize);
+        }
+    }
+
+    private void ToggleSort(string column)
+    {
+        if (sortColumn == column)
+            sortDescending = !sortDescending;
+        else
+        {
+            sortColumn = column;
+            sortDescending = false;
+        }
+        pageIndex = 0;
+    }
+
+    private void PrevPage()
+    {
+        if (pageIndex > 0) pageIndex--;
+    }
+
+    private void NextPage()
+    {
+        if (pageIndex < PageCount - 1) pageIndex++;
+    }
+
+    private MarkupString SortArrow(string column)
+    {
+        if (sortColumn != column) return (MarkupString)string.Empty;
+        return sortDescending ? (MarkupString)" &darr;" : (MarkupString)" &uarr;";
     }
 }
