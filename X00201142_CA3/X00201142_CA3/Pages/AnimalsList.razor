@@ -1,7 +1,10 @@
 @using System.Collections.Concurrent
 @using System.Text.Json
-@inject HttpClient Http
+@using X00201142_CA3.Models
+@using X00201142_CA3.Services
+@inject X00201142_CA3.Services.AnimalService AnimalService
 @page "/"
+@implements IDisposable
 
 <PageTitle>Animal List</PageTitle>
 
@@ -60,13 +63,13 @@ else
             {
                 @foreach (var a in PagedItems)
                 {
-                    EnsureImageLoaded(a.Word);
+                    AnimalService.EnsureImageLoaded(a.Word);
 
                     var key = (a.Word ?? string.Empty).Trim();
 
                     <tr>
                         <td style="width:220px">
-                            @if (imageUrls.TryGetValue(key, out var url))
+                            @if (AnimalService.ImageUrls.TryGetValue(key, out var url))
                             {
                                 if (url == null)
                                 {
@@ -117,21 +120,6 @@ else
 }
 
 @code {
-    public class AnimalWord
-    {
-        public string? Id { get; set; }
-        public string? Word { get; set; }
-        public string? Category { get; set; }
-        public int NumLetters { get; set; }
-        public int NumSyllables { get; set; }
-        public string? Hint { get; set; }
-    }
-
-    public class ApiResponse
-    {
-        public List<AnimalWord> Words { get; set; } = new();
-    }
-
     private List<AnimalWord>? allAnimals = null;
 
     private string searchTerm = "";
@@ -139,9 +127,6 @@ else
     private bool sortDescending = false;
     private int pageSize = 10;
     private int pageIndex = 0;
-
-    // for each imageurl, null = loading, "" means none found. Used ConcurrentDictionary since good for concurrent read/writes
-    private readonly ConcurrentDictionary<string, string?> imageUrls = new();
 
     private string SearchTerm
     {
@@ -182,6 +167,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        AnimalService.OnImageLoaded += HandleImageLoaded;
         await LoadAnimals();
     }
 
@@ -189,9 +175,7 @@ else
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<ApiResponse>(
-            "https://www.wordgamedb.com/api/v2/words?category=animal&limit=35");
-            allAnimals = response?.Words ?? new List<AnimalWord>();
+            allAnimals = await AnimalService.LoadAnimalsAsync();
             pageIndex = 0;
         }
         catch (Exception e)
@@ -199,6 +183,16 @@ else
             Console.WriteLine(e);
             allAnimals = new List<AnimalWord>();
         }
+    }
+    
+    private async void HandleImageLoaded(string _)
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        AnimalService.OnImageLoaded -= HandleImageLoaded;
     }
 
     private List<AnimalWord> GetFilteredList()
@@ -277,49 +271,5 @@ else
     {
         if (sortColumn != column) return "";
         return sortDescending ? " ↓" : " ↑";
-    }
-
-    private void EnsureImageLoaded(string? word)
-    {
-        if (string.IsNullOrWhiteSpace(word)) return;
-        var key = word.Trim();
-
-        if (imageUrls.ContainsKey(key)) return; // if exists do nothing
-        
-        imageUrls.TryAdd(key, null);
-        _ = LoadAndStoreImageAsync(key); // assign to _ to avoid compiler error
-    }
-
-    private async Task LoadAndStoreImageAsync(string word)
-    {
-        try
-        {
-            var url = $"https://en.wikipedia.org/api/rest_v1/page/summary/{Uri.EscapeDataString(word)}";
-
-            var resp = await Http.GetAsync(url);
-            if (!resp.IsSuccessStatusCode)
-            {
-                imageUrls[word] = string.Empty;
-                return;
-            }
-
-            using var doc = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync());
-
-            if (doc.RootElement.TryGetProperty("thumbnail", out var thumb) &&
-                thumb.TryGetProperty("source", out var src))
-            {
-                imageUrls[word] = src.GetString() ?? string.Empty;
-            }
-            else
-            {
-                imageUrls[word] = string.Empty;
-            }
-        }
-        catch
-        {
-            imageUrls[word] = string.Empty;
-        }
-        // update UI
-        await InvokeAsync(StateHasChanged);
     }
 }
