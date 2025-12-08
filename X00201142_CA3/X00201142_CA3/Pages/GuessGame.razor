@@ -1,0 +1,114 @@
+@page "/Guess-Game"
+@inject HttpClient Http
+@using Microsoft.AspNetCore.Components.Web;
+
+<PageTitle>Guessing Game</PageTitle>
+
+@if (loading)
+{
+    <p>Loading a random word...</p>
+}
+else if (error)
+{
+    <p>Error loading word. Please try again.</p>
+}
+else
+{
+    <h3><b>Category: </b>@category</h3>
+    <h3><b>Hint: </b>@hint</h3>
+
+    <input @bind="guess" />
+    <button @onclick="GuessWord">Submit</button>
+
+    <p>Attempts Left: @attemptsLeft</p>
+
+    @if (hasWon)
+    {
+        <p style="color:green; font-weight:bold;">Correct, You won! The word was: <b>@wordToGuess</b></p>
+    }
+    else if (hasLost)
+    {
+        <p style="color:red; font-weight:bold;">Sorry, You lost! The word was: <b>@wordToGuess</b></p>
+    }
+
+    <button @onclick="GiveUp">Give Up</button>
+    <button @onclick="StartNewGame">New Game</button>
+}
+@code
+{
+    public class WordResponse
+    {
+        public string? category { get; set; }
+        public string? hint { get; set; }
+        public string? word { get; set; }
+    }
+    string wordToGuess = "";
+    bool hasWon = false, hasLost = false, loading = true, error = false;
+    int attemptsLeft = 6;
+    string guess = "";
+    string hint = "";
+    string category = "";
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await StartNewGame();
+    }
+
+    void GiveUp()
+    {
+        hasLost = true;
+        attemptsLeft = 0;
+    }
+    async Task StartNewGame()
+    {
+        loading = true;
+        error = false;
+        hasWon = false;
+        hasLost = false;
+        attemptsLeft = 6;
+        guess = "";
+        wordToGuess = "";
+        category = "";
+        hint = "";
+
+        try
+        {
+            var response = await Http.GetFromJsonAsync<WordResponse>("https://www.wordgamedb.com/api/v2/words/random");
+            wordToGuess = response?.word?.ToUpperInvariant() ?? "";
+            hint = response?.hint ?? "";
+            category = response?.category ?? "";
+        }
+        catch
+        {
+            error = true;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    void GuessWord()
+    {
+        if (string.IsNullOrWhiteSpace(guess) || hasWon || hasLost ) return;
+
+
+        string submitted = guess.Trim().ToUpperInvariant();
+        guess = "";
+
+        if (submitted == wordToGuess)
+        {
+            hasWon = true;
+        }
+        else
+        {
+            attemptsLeft--;
+            if (attemptsLeft <= 0)
+            {
+                hasLost = true;
+            }
+        }
+    }
+
+}
